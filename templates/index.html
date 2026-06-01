@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CrimeVision is an advanced machine learning-based crime analysis and safety prediction system. Analyze crime hotspots, identify trends, and generate recommendations.">
+    <title>CrimeVision - Crime Analysis & Safety Prediction Dashboard</title>
+    
+    <!-- CDNs: Leaflet, Chart.js, FontAwesome -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+</head>
+<body>
+
+    <!-- Fullscreen Map Base -->
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+
+    <!-- Floating Top Header Overlay -->
+    <header class="floating-header">
+        <a href="/" class="brand" id="brand-link">
+            <i class="fa-solid fa-shield-halved brand-icon"></i>
+            <h1>CrimeVision <span>ML Core v1.1</span></h1>
+        </a>
+        
+        <div class="header-stats-row">
+            <div class="header-stat-box" id="stat-incidents">
+                <span class="label">Total Incidents</span>
+                <span class="value" id="val-total-incidents">0</span>
+            </div>
+            <div class="header-stat-box" id="stat-hotspots">
+                <span class="label">Hotspots Detected</span>
+                <span class="value text-danger" id="val-hotspots">0</span>
+            </div>
+            <div class="header-stat-box" id="stat-concern">
+                <span class="label">Primary Concern</span>
+                <span class="value text-warning" id="val-primary-concern">Theft</span>
+            </div>
+        </div>
+        
+        <div>
+            <button class="btn btn-secondary btn-header-reset" id="btn-reset" title="Reset dataset to default records">
+                <i class="fa-solid fa-rotate-left"></i> Reset Dataset
+            </button>
+        </div>
+    </header>
+
+    <!-- Collapsable Hover Sidebar (Left) -->
+    <aside class="floating-sidebar collapsed" id="sidebar">
+        <!-- Slim vertical icon bar when collapsed -->
+        <div class="sidebar-icons-bar">
+            <div class="sidebar-icon-btn active-icon" title="Controls"><i class="fa-solid fa-sliders"></i></div>
+            <div class="sidebar-icon-btn" title="Predictor"><i class="fa-solid fa-magnifying-glass-location"></i></div>
+            <div class="sidebar-icon-btn" title="Live Feed"><i class="fa-solid fa-satellite-dish"></i></div>
+            <div class="sidebar-icon-btn" title="Upload"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+            <div class="sidebar-expand-arrow"><i class="fa-solid fa-chevron-right"></i></div>
+        </div>
+        
+        <!-- Expanded sidebar widgets content -->
+        <div class="sidebar-widgets-panel">
+            <div class="sidebar-header">
+                <h3><i class="fa-solid fa-shield-halved" style="color: var(--accent-blue);"></i> Control Center</h3>
+                <span class="sidebar-close-trigger"><i class="fa-solid fa-chevron-left"></i></span>
+            </div>
+            
+            <div class="widgets-scroll-container">
+                <!-- Analysis Controls -->
+                <section class="glass-card card-accent-blue" id="widget-controls">
+                    <h2><i class="fa-solid fa-sliders"></i> Analysis Controls</h2>
+                    <div class="control-group">
+                        <label for="filter-category">Crime Category</label>
+                        <select id="filter-category" class="input-style">
+                            <option value="All">All Categories</option>
+                            <option value="Theft">Theft</option>
+                            <option value="Assault">Assault</option>
+                            <option value="Burglary">Burglary</option>
+                            <option value="Cyber Crime">Cyber Crime</option>
+                            <option value="Harassment">Harassment</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="cluster-k">Hotspots Count (K-Means)</label>
+                        <div class="range-container">
+                            <input type="range" id="cluster-k" min="2" max="15" value="6" class="range-slider" />
+                            <span id="k-value" class="range-val">6</span>
+                        </div>
+                    </div>
+                    
+                    <button class="btn btn-primary" id="btn-recluster">
+                        <i class="fa-solid fa-gears"></i> Update Hotspots
+                    </button>
+                </section>
+                
+                <!-- Risk Predictor -->
+                <section class="glass-card card-accent-green" id="widget-predict">
+                    <h2><i class="fa-solid fa-magnifying-glass-location"></i> Risk Predictor</h2>
+                    <p class="widget-subtitle">
+                        Enter coordinates manually or click anywhere on the map to query the safety index.
+                    </p>
+                    
+                    <div class="control-group">
+                        <label for="pred-lat">Latitude</label>
+                        <input type="number" id="pred-lat" step="0.0001" placeholder="e.g. 28.6139" class="input-style" />
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="pred-lon">Longitude</label>
+                        <input type="number" id="pred-lon" step="0.0001" placeholder="e.g. 77.2090" class="input-style" />
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="pred-hour">Prediction Hour</label>
+                        <select id="pred-hour" class="input-style">
+                            <option value="0">12:00 AM (Midnight)</option>
+                            <option value="3">03:00 AM</option>
+                            <option value="6">06:00 AM</option>
+                            <option value="9">09:00 AM</option>
+                            <option value="12" selected>12:00 PM (Noon)</option>
+                            <option value="15">03:00 PM</option>
+                            <option value="18">06:00 PM</option>
+                            <option value="21">09:00 PM</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn btn-primary" id="btn-predict">
+                        <i class="fa-solid fa-chart-line"></i> Calculate Safety
+                    </button>
+                    
+                    <div class="prediction-results" id="pred-results">
+                        <div class="risk-header">
+                            <span class="risk-title">Safety Risk Level:</span>
+                            <span class="risk-level-badge" id="res-badge">Low</span>
+                        </div>
+                        <div class="meter-bg">
+                            <div class="meter-fill" id="res-meter"></div>
+                        </div>
+                        
+                        <div class="risk-metrics-row">
+                            <div class="metric-box">
+                                <div class="metric-box-label">Risk Rating</div>
+                                <div class="metric-box-value" id="res-score">32%</div>
+                            </div>
+                            <div class="metric-box">
+                                <div class="metric-box-label">Trend Category</div>
+                                <div class="metric-box-value" id="res-cat">Theft</div>
+                            </div>
+                        </div>
+                        
+                        <div class="advice-card" id="res-advice">
+                            <h4>Safety Guideline</h4>
+                            <p>No guidelines generated.</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- CCTNS Live Feed -->
+                <section class="glass-card card-accent-red" id="widget-live-stream">
+                    <h2><i class="fa-solid fa-satellite-dish"></i> CCTNS Live Feed</h2>
+                    <div class="control-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                        <label for="chk-live-stream" style="margin-bottom: 0; cursor: pointer;">Enable Live FIR Stream</label>
+                        <input type="checkbox" id="chk-live-stream" style="width: 18px; height: 18px; accent-color: var(--risk-high); cursor: pointer;" />
+                    </div>
+                    
+                    <div id="live-ticker-container" class="live-ticker-scrollbox">
+                        <div style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 0.5rem;" id="live-ticker-placeholder">
+                            <i class="fa-solid fa-spinner fa-spin" style="margin-right: 0.25rem; color: var(--risk-high);"></i> Listening for CCTNS FIR logs...
+                        </div>
+                        <ul id="live-ticker-list" style="list-style: none; padding: 0;"></ul>
+                    </div>
+                </section>
+                
+                <!-- Dataset Upload -->
+                <section class="glass-card" id="widget-upload">
+                    <h2><i class="fa-solid fa-file-csv"></i> Dataset Source</h2>
+                    <p class="widget-subtitle">
+                        Upload a custom CSV file to analyze crime patterns in other regions.
+                    </p>
+                    <div class="upload-btn-container">
+                        <button class="btn btn-secondary" style="width: 100%;">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Choose CSV File
+                        </button>
+                        <input type="file" id="csv-file-input" class="file-input" accept=".csv" />
+                    </div>
+                    <div style="font-size: 0.75rem; text-align: center; margin-top: 0.5rem; color: var(--text-muted);" id="upload-status-lbl">
+                        Using default preloaded dataset.
+                    </div>
+                </section>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Floating Drawer Button (Bottom Right) -->
+    <button class="floating-drawer-toggle" id="btn-charts-drawer-toggle" title="View Analytics">
+        <i class="fa-solid fa-chart-pie"></i> Analytics
+    </button>
+
+    <!-- Slide-out Charts Drawer Overlay (Bottom Right) -->
+    <div class="floating-charts-drawer collapsed-drawer" id="charts-drawer">
+        <div class="drawer-header">
+            <h3><i class="fa-solid fa-chart-column"></i> Analytics Dashboard</h3>
+            <button class="drawer-close-btn" id="btn-close-drawer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div class="drawer-content">
+            <!-- Category Share Chart -->
+            <div class="glass-card chart-card">
+                <h4><i class="fa-solid fa-chart-pie"></i> Crime Distribution</h4>
+                <div class="chart-wrapper">
+                    <canvas id="chart-categories"></canvas>
+                </div>
+            </div>
+            
+            <!-- Peak Hours Line Chart -->
+            <div class="glass-card chart-card">
+                <h4><i class="fa-solid fa-chart-area"></i> Chronological Hourly Peaks</h4>
+                <div class="chart-wrapper">
+                    <canvas id="chart-hourly"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Message -->
+    <div class="toast-msg" id="toast">
+        <span id="toast-text">Analyzing dataset...</span>
+    </div>
+
+    <!-- Script imports -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
